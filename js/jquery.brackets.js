@@ -2,7 +2,7 @@
 /**
  * silly textbox/input enhancements written in boredom
  *
- * Version: 0.0.1
+ * Version: 0.0.2
  * Requires: jQuery v2.1+ (?)
  *
  * Copyright (c) 2015 Vineeth Raj <contact.twn@openmailbox.org
@@ -14,8 +14,41 @@
  *  - fix browsers other than chrome
  *  - support ie in the long run?
  *  - greasemonkey-ify ?
+ *  - add support for indentation
+ *  - cleanup code ? :P
  *
  */
+
+ var map = {
+   39:  Array(39,   39, 0), // single quotes
+   34:  Array(34,   34, 1), // double quotes
+   91:  Array(91,   93, 0), // square brackets
+   123: Array(123, 125, 1), // curly  brackets
+   40:  Array(40,   41, 0), // normal brackets
+   60:  Array(60,   62, 1), // lt     tag
+   96:  Array(96,   96, 0), // tilde
+ };
+
+ var pos = {
+   'LEFT'    : 0,
+   'RIGHT'   : 1,
+   'MODIFIER': 2,
+ };
+
+ var key = {
+   'BACKSPACE' : 8, // backspace
+   'TAB'       : 9, // tab
+ };
+
+ var tabspec = {
+   'TABSOFT'   : true, // hard/soft tabspec
+   'TABLENGTH' : 2,     // tablength if tabsoft is true
+ };
+
+ var tabstr = {
+   'TAB_SOFT'   : Array(tabspec.TABLENGTH + 1).join(" "), // soft tab
+   'TAB_HARD'   : '	', // hard tab
+ }
 
 /* 01: Tim Down : http://stackoverflow.com/a/5379408 */
 function getSelectionText() {
@@ -43,6 +76,20 @@ function doGetCaretPosition (ctrl) {
 		CaretPos = ctrl.selectionStart;
 	return (CaretPos);
 }
+function setCaretPosition(ctrl, pos){
+	if(ctrl.setSelectionRange)
+	{
+		ctrl.focus();
+		ctrl.setSelectionRange(pos,pos);
+	}
+	else if (ctrl.createTextRange) {
+		var range = ctrl.createTextRange();
+		range.collapse(true);
+		range.moveEnd('character', pos);
+		range.moveStart('character', pos);
+		range.select();
+	}
+}
 /* 02: end */
 
 /* 04: Erik Pukinskis: http://stackoverflow.com/a/29862280 */
@@ -61,8 +108,18 @@ function typeInTextarea(el, newText) {
     el.get(0).setSelectionRange(start, end);
     el.get(0).dispatchEvent(ev);
     if (newText != " ") { // if ! placeholder ' ' (space)
-      el.prop("selectionStart", start + 1);
-      el.prop("selectionEnd",   end + 1);
+
+      if ( start == end && map[newText[0]] != undefined ) {
+        el.prop("selectionStart", start + newText.length);
+        el.prop("selectionEnd",   end + newText.length);
+      } else {
+        if (newText == tabstr.TAB_SOFT || newText == tabstr.TAB_HARD) {
+          setCaretPosition(el.get(0), start + newText.length);
+        } else {
+          el.prop("selectionStart", start + 1);
+          el.prop("selectionEnd",   end + 1);
+        }
+      }
       el.focus();
     }
   } else {
@@ -82,27 +139,6 @@ function typeInTextarea(el, newText) {
 /* 04: end */
 
 /* brackets: begin */
-var map = {
-  39:  Array(39,   39, 0), // single quotes
-  34:  Array(34,   34, 1), // double quotes
-  91:  Array(91,   93, 0), // square brackets
-  123: Array(123, 125, 1), // curly  brackets
-  40:  Array(40,   41, 0), // normal brackets
-  60:  Array(60,   62, 1), // lt     tag
-  96:  Array(96,   96, 0), // tilde
-};
-
-var pos = {
-  'LEFT'    : 0,
-  'RIGHT'   : 1,
-  'MODIFIER': 2,
-};
-
-var key = {
-  'BACKSPACE' : 8, // backspace
-  'TAB'       : 9, // tab
-};
-
 (function (factory) {
   if (typeof exports === 'object') {
     // CommonJS
@@ -166,10 +202,28 @@ var key = {
 
     return false;
   }).keydown( function(event) {
+    var caretptr = doGetCaretPosition(this);
     if(event.which == key.BACKSPACE) {
-      var caretptr = doGetCaretPosition(this);
       var chr      = $(this).val().substring(caretptr - 1, caretptr).charCodeAt(0);;
       var mapped   = map[chr];
+
+      if (tabspec.TABSOFT) {
+        var checktab = $(this).val().substring(caretptr - tabspec.TABLENGTH, caretptr);
+        if (checktab == tabstr.TAB_SOFT) {
+          this.selectionStart = caretptr - tabspec.TABLENGTH;
+          this.selectionEnd   = caretptr;
+          this.setSelectionRange(this.selectionStart, this.selectionEnd);
+          typeInTextarea($(this), "");
+        }
+      } else {
+        if (left == (tabstr.TAB_HARD)) {
+          this.selectionStart = caretptr - 1;
+          this.selectionEnd   = caretptr + 1;
+
+          this.setSelectionRange(this.selectionStart, this.selectionEnd);
+          typeInTextarea($(this), "");
+        }
+      }
 
       if (mapped == undefined) {
         return true;
@@ -201,6 +255,16 @@ var key = {
 
       /* return true if none */
       return true;
+    } else if (event.which == key.TAB) {
+
+      if (getSelectionText() == "") {
+        this.selectionStart = caretptr;
+        this.selectionEnd   = caretptr;
+      }
+
+      typeInTextarea($(this), tabspec.TABSOFT ? tabstr.TAB_SOFT : tabstr.TAB_HARD);
+
+      return false;
     }
   });
 
